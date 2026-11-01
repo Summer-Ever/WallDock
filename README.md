@@ -62,14 +62,16 @@ release 签名读取根目录的 `keystore.properties`（不在仓库里，涉�
 
 ### 直接安装（不想编译）
 
-👉 **[下载 WallDock v1.2.0（签名版 APK，18 MB）](../../releases/latest)**
+👉 **[下载 WallDock v1.2.1（签名版 APK，18 MB）](../../releases/latest)**
 
-仓库里也留了一份副本：[`release/WallDock-v1.2.0.apk`](release/WallDock-v1.2.0.apk)（SHA-256 见同名 `.sha256` 文件）
+仓库里也留了一份副本：[`release/WallDock-v1.2.1.apk`](release/WallDock-v1.2.1.apk)（SHA-256 见同名 `.sha256` 文件）
+
+如果安装时提示「与已安装的应用签名不同」，说明你装的是最早的调试包——请改用 [`release/WallDock-v1.2.1-debugkey.apk`](release/WallDock-v1.2.1-debugkey.apk) 覆盖升级（保留已调参数），之后想换正式签名版需要卸载重装一次。
 
 传到手机上点开安装即可（需允许「安装未知来源应用」），或用 adb：
 
 ```bash
-adb install -r release/WallDock-v1.2.0.apk
+adb install -r release/WallDock-v1.2.1.apk
 ```
 
 > 该 APK 使用自签名证书（`CN=WallDock`）签名，非 Google Play 分发，属正常情况。

@@ -28,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
@@ -96,6 +98,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private var renderQueued = false
     private var saveJob: Job? = null
     private var gestureEndJob: Job? = null
+    private var loadJob: Job? = null
+
+    /** 渲染串行锁：合并循环、手势结束补帧、换图渲染可能同时到来，串行才能保证不互相覆盖 */
+    private val renderMutex = Mutex()
 
     init {
         val cached = store.loadWallpaper()
@@ -110,8 +116,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             val h = (w * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
             source = BitmapUtils.demoBitmap(w, h)
         }
-        requestRender(immediate = true)
-        viewModelScope.launch { refreshBasePreview() }
+        // 同样先备好降采样源与手势底图，首帧才既快又对
+        viewModelScope.launch {
+            source?.let { preparePreviewSource(it) }
+            refreshBasePreview()
+            requestRender(immediate = true)
+        }
     }
 
     /** Dock 顶边在屏幕高度中的比例（0=顶部，1=底部），桌面示意层用它决定图标能排到哪 */
@@ -120,6 +130,24 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         if (!d.enabled) return 0.88f
         val topPx = screen.height - (d.bottomMarginDp + d.heightDp) * density
         return (topPx / screen.height).coerceIn(0.4f, 1f)
+    }
+
+    /**
+     * 手势层用的平移像素量，必须与 [BitmapUtils.coverMatrix] 的算法一致，
+     * 否则松手切到成品图时会因位置差异「跳」一下。
+     */
+    fun livePanPixels(boxW: Float, boxH: Float): FloatArray {
+        val src = source ?: return floatArrayOf(0f, 0f)
+        if (src.width <= 0 || src.height <= 0 || boxW <= 1f || boxH <= 1f) {
+            return floatArrayOf(0f, 0f)
+        }
+        val t = state.transform
+        val cover = max(boxW / src.width, boxH / src.height)
+        val drawnW = src.width * cover * t.zoom
+        val drawnH = src.height * cover * t.zoom
+        val maxPanX = ((drawnW - boxW) / 2f).coerceAtLeast(0f)
+        val maxPanY = ((drawnH - boxH) / 2f).coerceAtLeast(0f)
+        return floatArrayOf(maxPanX * t.panX, maxPanY * t.panY)
     }
 
     // ---------------- 持久化 ----------------
@@ -145,11 +173,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------- 图片 ----------------
 
     fun loadImage(uri: Uri) {
-        viewModelScope.launch {
+        // 连选多张时只认最后一张，避免前一张的异步结果覆盖后一张
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             busy = true
             val bmp = withContext(Dispatchers.IO) { BitmapUtils.decode(getApplication(), uri) }
-            busy = false
             if (bmp == null) {
+                busy = false
                 message = "图片读取失败，换一张试试"
                 return@launch
             }
@@ -159,9 +189,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             // 只重置裁剪，Dock / 模糊参数原样沿用——换壁纸不用重调
             state = state.copy(transform = CropTransform())
             gestureActive = false
+
+            // 顺序很重要：必须先重建 previewSource 与手势底图，再渲染。
+            // 否则渲染会继续用「上一张图」的缓存，表现为选图慢一拍。
+            preparePreviewSource(bmp)
+            refreshBasePreview()
+            // 立刻把新手势底图顶上预览，让用户马上看到换图成功，随后再出完整效果
+            preview = basePreview
+            Log.d("WallDock", "image loaded ${bmp.width}x${bmp.height} → 预览已切换为新图")
+
+            busy = false
             requestRender(immediate = true)
             persist(0)
-            refreshBasePreview()
             withContext(Dispatchers.IO) { store.saveWallpaper(bmp) }
         }
     }
@@ -198,7 +237,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setZoom(v: Float) {
         state = state.copy(transform = state.transform.copy(zoom = v.coerceIn(1f, 5f)))
-        markGestureActive()
+        // 滑杆是低频输入：走合并渲染，拖动中也能持续看到带模糊与 Dock 的效果；
+        // 不用手势层，否则调缩放时模糊和 Dock 会暂时消失
+        requestRender()
+        persist()
     }
 
     fun nudgePan(dx: Float, dy: Float) {
@@ -208,15 +250,15 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
                 panY = (state.transform.panY + dy).coerceIn(-1f, 1f),
             )
         )
-        requestRender()
         persist()
+        // 与手势走同一条路径：先由 live 层立刻反映新位置，渲染完再撤层
+        markGestureActive()
     }
 
     fun resetCrop() {
         state = state.copy(transform = CropTransform())
-        gestureActive = false
-        requestRender(immediate = true)
         persist()
+        markGestureActive()
     }
 
     fun switchPreviewMode(mode: PreviewMode) {
@@ -259,24 +301,32 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         gestureEndJob?.cancel()
         gestureEndJob = viewModelScope.launch {
             delay(180)
+            // 顺序关键：先把新构图完整渲染出来，再撤掉 live 层。
+            // 若先撤层，预览会短暂切回「手势前的旧成品图」再跳到新位置——就是那一下抖动。
+            renderPreview()
+            Log.d("WallDock", "gesture settle → 切回成品图（渲染已完成）")
             gestureActive = false
-            requestRender(immediate = true)
             persist()
         }
     }
 
-    /** 生成手势底图 + 预览降采样源图 */
-    private suspend fun refreshBasePreview() {
-        val src = source ?: return
+    /** 重建预览用的降采样源图（换图时必须先调用，否则渲染会沿用上一张图） */
+    private suspend fun preparePreviewSource(src: Bitmap) {
         val pw = GESTURE_WIDTH
-        val ph = (pw * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
-        withContext(Dispatchers.Default) {
-            previewSource = if (src.width > pw) {
+        previewSource = withContext(Dispatchers.Default) {
+            if (src.width > pw) {
                 Bitmap.createScaledBitmap(src, pw, max(1, src.height * pw / src.width), true)
             } else src
         }
+    }
+
+    /** 生成手势底图（cover 铺满、未模糊、未加 Dock） */
+    private suspend fun refreshBasePreview() {
+        val src = previewSource ?: source ?: return
+        val pw = GESTURE_WIDTH
+        val ph = (pw * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
         val bmp = withContext(Dispatchers.Default) {
-            BitmapUtils.renderCover(previewSource ?: src, pw, ph, CropTransform())
+            BitmapUtils.renderCover(src, pw, ph, CropTransform())
         }
         basePreview = bmp.asImageBitmap()
     }
@@ -303,9 +353,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun renderPreview() {
+    private suspend fun renderPreview() = renderMutex.withLock {
         // 预览一律用降采样源图（720 宽）：滑动调参时渲染量约降 4 倍，观感几乎无差
-        val src = previewSource ?: source ?: return
+        val src = previewSource ?: source ?: return@withLock
         val t0 = System.currentTimeMillis()
         val st = state
         val pw = 480

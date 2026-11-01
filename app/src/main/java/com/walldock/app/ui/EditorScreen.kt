@@ -195,8 +195,10 @@ private fun PreviewArea(vm: EditorViewModel, preview: ImageBitmap?, modifier: Mo
                                     val tr = vm.state.transform
                                     scaleX = tr.zoom
                                     scaleY = tr.zoom
-                                    translationX = (tr.zoom - 1f) * size.width / 2f * tr.panX
-                                    translationY = (tr.zoom - 1f) * size.height / 2f * tr.panY
+                                    // 平移量与成品图渲染算法一致，松手切换时才不会跳
+                                    val pan = vm.livePanPixels(size.width, size.height)
+                                    translationX = pan[0]
+                                    translationY = pan[1]
                                 },
                             contentScale = ContentScale.Crop,
                         )

@@ -16,15 +16,16 @@ object Blur {
         return s * s * canvasWidth * 0.045f
     }
 
-    fun blur(src: Bitmap, radiusPx: Float): Bitmap {
+    fun blur(src: Bitmap, radiusPx: Float, extraDownscale: Int = 1): Bitmap {
         val r = radiusPx.roundToInt()
         if (r < 1) return src
 
+        val extra = extraDownscale.coerceAtLeast(1)
         val scale = when {
             r >= 20 -> 4
             r >= 9 -> 2
             else -> 1
-        }
+        } * extra
         val w = max(1, src.width / scale)
         val h = max(1, src.height / scale)
         val small = if (scale == 1) {

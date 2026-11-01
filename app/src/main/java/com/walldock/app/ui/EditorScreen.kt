@@ -43,9 +43,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -180,12 +183,48 @@ private fun PreviewArea(vm: EditorViewModel, preview: ImageBitmap?, modifier: Mo
                             }
                         },
                 ) {
-                    Image(
-                        bitmap = preview,
-                        contentDescription = "壁纸预览",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
+                    // 手势进行中：直接对底图做图形变换，跟手不卡；松手后再换成完整渲染结果
+                    val live = vm.gestureActive && vm.basePreview != null
+                    if (live) {
+                        Image(
+                            bitmap = vm.basePreview!!,
+                            contentDescription = "壁纸预览",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    val tr = vm.state.transform
+                                    scaleX = tr.zoom
+                                    scaleY = tr.zoom
+                                    translationX = (tr.zoom - 1f) * size.width / 2f * tr.panX
+                                    translationY = (tr.zoom - 1f) * size.height / 2f * tr.panY
+                                },
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else if (preview != null) {
+                        Image(
+                            bitmap = preview,
+                            contentDescription = "壁纸预览",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                    // 桌面示意层：模拟启动器图标网格，方便判断 Dock 位置是否压到图标
+                    if (state.desktopPreview && vm.previewMode == PreviewMode.HOME) {
+                        DesktopOverlay(
+                            dockTopFraction = vm.dockTopFraction(),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Box(
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(10.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        ) {
+                            Text("桌面示意", color = Color.White, fontSize = 10.sp)
+                        }
+                    }
                     // 状态栏 / 灵动区域示意
                     Box(
                         Modifier
@@ -248,6 +287,83 @@ private fun EmptyPreview() {
         Text("还没有图片", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         Text("点下方「选择图片」开始", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+    }
+}
+
+/**
+ * 桌面示意层：按真实启动器的观感，在预览上叠加状态栏、4 列图标网格与页码点。
+ * 图标只排到 Dock 顶边以上，所以调 Dock 高度/位置时能直接看出会不会压到图标。
+ */
+@Composable
+private fun DesktopOverlay(dockTopFraction: Float, modifier: Modifier = Modifier) {
+    Box(modifier) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            if (w <= 0f || h <= 0f) return@Canvas
+
+            val icon = w * 0.142f
+            val gapX = (w - icon * 4f) / 5f
+            val rowStep = icon * 1.62f
+            val top = h * 0.072f
+            val bottom = h * dockTopFraction - h * 0.030f
+
+            var y = top
+            while (y + icon <= bottom) {
+                for (c in 0 until 4) {
+                    val x = gapX + c * (icon + gapX)
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.20f),
+                        topLeft = Offset(x, y),
+                        size = Size(icon, icon),
+                        cornerRadius = CornerRadius(icon * 0.26f),
+                    )
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.14f),
+                        topLeft = Offset(x + icon * 0.18f, y + icon + icon * 0.12f),
+                        size = Size(icon * 0.64f, icon * 0.09f),
+                        cornerRadius = CornerRadius(icon * 0.05f),
+                    )
+                }
+                y += rowStep
+            }
+
+            // 页码点（贴在 Dock 上方）
+            val dotR = w * 0.009f
+            val dotY = (bottom + h * 0.012f).coerceAtMost(h * 0.98f)
+            val cx = w / 2f
+            for (i in -1..1) {
+                drawCircle(
+                    color = Color.White.copy(alpha = if (i == 0) 0.85f else 0.35f),
+                    radius = dotR,
+                    center = Offset(cx + i * dotR * 4f, dotY),
+                )
+            }
+        }
+
+        // 状态栏示意
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, top = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("9:41", color = Color.White.copy(alpha = 0.9f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier
+                    .size(width = 10.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(Color.White.copy(alpha = 0.55f)),
+            )
+            Spacer(Modifier.width(3.dp))
+            Box(
+                Modifier
+                    .size(width = 7.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(Color.White.copy(alpha = 0.45f)),
+            )
+        }
     }
 }
 
@@ -343,6 +459,12 @@ private fun DockTab(vm: EditorViewModel) {
     Spacer(Modifier.height(6.dp))
 
     SwitchRow("启用 Dock 栏", d.enabled, onChange = { on -> vm.updateDock { it.copy(enabled = on) } })
+    SwitchRow(
+        "桌面效果预览",
+        vm.state.desktopPreview,
+        onChange = { vm.setDesktopPreview(it) },
+        hint = "叠加模拟图标网格，直接看出 Dock 会不会压到图标",
+    )
 
     SectionLabel("玻璃样式")
     Segmented(

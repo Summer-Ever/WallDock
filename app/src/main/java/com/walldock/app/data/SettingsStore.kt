@@ -18,6 +18,7 @@ data class SavedSetup(
     val lockBlur: Float = 0f,
     val linkBlur: Boolean = true,
     val showGrid: Boolean = false,
+    val desktopPreview: Boolean = false,
     val dock: DockSettings = DockSettings(),
     val transform: CropTransform = CropTransform(),
     /** 上次的壁纸是否还缓存着 */
@@ -62,6 +63,7 @@ class SettingsStore(context: Context) {
             lockBlur = blur.optDouble("lock", 0.0).toFloat().coerceIn(0f, 1f),
             linkBlur = blur.optBoolean("link", true),
             showGrid = o.optBoolean("grid", false),
+            desktopPreview = o.optBoolean("desktopPreview", false),
             transform = CropTransform(
                 zoom = tr.optDouble("zoom", 1.0).toFloat().coerceIn(1f, 5f),
                 panX = tr.optDouble("panX", 0.0).toFloat().coerceIn(-1f, 1f),
@@ -106,6 +108,7 @@ class SettingsStore(context: Context) {
                 },
             )
             put("grid", state.showGrid)
+            put("desktopPreview", state.desktopPreview)
             put(
                 "transform",
                 JSONObject().apply {

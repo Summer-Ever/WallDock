@@ -9,6 +9,7 @@
 **壁纸**
 - 系统相册选图（Photo Picker，无需相册权限）
 - 预览区直接双指缩放 / 拖动构图，等价于自由裁剪，附三分构图线
+- 裁剪**实时跟手**：手势期间走 GPU 图形变换不重绘，松手后再合成模糊与 Dock
 - 输出分辨率自动匹配设备真实屏幕（K80 为 1440×3200）
 
 **模糊**
@@ -22,6 +23,8 @@
 - 角度（-30°~30°，可倾斜）、宽度（屏宽占比）、高度、距底部距离、圆角
 - 透明度、玻璃后方附加模糊强度
 - 图标位数量（0–6）与「对位参考框」，方便把启动器图标摆到 Dock 上
+- **桌面效果预览**：在预览里叠加模拟启动器（状态栏 / 4 列图标网格 / 页码点），
+  图标止步于 Dock 上方，调位置时直接看出会不会压到图标
 
 **应用**
 - 一键应用到「桌面 + 锁屏」，也可只设桌面或只设锁屏
@@ -59,14 +62,14 @@ release 签名读取根目录的 `keystore.properties`（不在仓库里，涉�
 
 ### 直接安装（不想编译）
 
-👉 **[下载 WallDock v1.1.0（签名版 APK，18 MB）](../../releases/latest)**
+👉 **[下载 WallDock v1.2.0（签名版 APK，18 MB）](../../releases/latest)**
 
-仓库里也留了一份副本：[`release/WallDock-v1.1.0.apk`](release/WallDock-v1.1.0.apk)（SHA-256 见同名 `.sha256` 文件）
+仓库里也留了一份副本：[`release/WallDock-v1.2.0.apk`](release/WallDock-v1.2.0.apk)（SHA-256 见同名 `.sha256` 文件）
 
 传到手机上点开安装即可（需允许「安装未知来源应用」），或用 adb：
 
 ```bash
-adb install -r release/WallDock-v1.1.0.apk
+adb install -r release/WallDock-v1.2.0.apk
 ```
 
 > 该 APK 使用自签名证书（`CN=WallDock`）签名，非 Google Play 分发，属正常情况。
@@ -83,9 +86,9 @@ adb install -r release/WallDock-v1.1.0.apk
 
 重开 App 自动恢复上次的壁纸与 Dock 设置：
 
-| 恢复上次会话 |
-| :---: |
-| ![恢复](screenshots/05-session-restore.png) |
+| 恢复上次会话 | 桌面效果预览 |
+| :---: | :---: |
+| ![恢复](screenshots/05-session-restore.png) | ![桌面示意](screenshots/06-desktop-overlay.png) |
 
 ---
 

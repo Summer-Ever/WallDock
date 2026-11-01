@@ -52,4 +52,6 @@ data class EditorState(
     val linkBlur: Boolean = true,
     val dock: DockSettings = DockSettings(),
     val showGrid: Boolean = false,
+    /** 预览里叠加桌面示意图标层，方便对齐 Dock 位置 */
+    val desktopPreview: Boolean = false,
 )

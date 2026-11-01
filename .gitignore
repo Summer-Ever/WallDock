@@ -13,3 +13,7 @@ output.json
 
 # 允许提交已构建的安装包
 !release/*.apk
+
+# 签名文件与本机口令，不公开
+keystore/
+keystore.properties

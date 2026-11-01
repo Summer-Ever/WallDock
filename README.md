@@ -49,20 +49,26 @@ Android 不允许普通 App 往别家启动器的桌面上画东西，所以这�
 # 方式一：Android Studio 打开工程目录，直接 Run
 # 方式二：命令行
 ./gradlew :app:assembleDebug        # 产物 app/build/outputs/apk/debug/app-debug.apk
-./gradlew :app:assembleRelease      # 未签名的 release 包
+./gradlew :app:assembleRelease      # 已签名 release 包（需 keystore.properties）
 ```
 
 > 首次构建需要联网从 Google Maven 拉取 Compose 依赖，约 2–3 分钟。
 
+release 签名读取根目录的 `keystore.properties`（不在仓库里，涉及私钥）；该文件不存在时会自动退回 debug 签名，所以任何人 clone 下来都能直接构建。
+
 ### 直接安装（不想编译）
 
-仓库里已附带构建好的安装包：[`release/WallDock-v1.0.0-debug.apk`](release/WallDock-v1.0.0-debug.apk)
+👉 **[下载 WallDock v1.0.0（签名版 APK，18 MB）](../../releases/latest)**
+
+仓库里也留了一份副本：[`release/WallDock-v1.0.0.apk`](release/WallDock-v1.0.0.apk)（SHA-256 见同名 `.sha256` 文件）
 
 传到手机上点开安装即可（需允许「安装未知来源应用」），或用 adb：
 
 ```bash
-adb install -r release/WallDock-v1.0.0-debug.apk
+adb install -r release/WallDock-v1.0.0.apk
 ```
+
+> 该 APK 使用自签名证书（`CN=WallDock`）签名，非 Google Play 分发，属正常情况。
 
 ## 界面
 

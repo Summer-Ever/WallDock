@@ -20,3 +20,6 @@ keystore.properties
 
 # 本地加密备份，不上传
 walldock-signing-backup.tar.gz.enc
+
+# 临时截图
+screenshots/tmp_*

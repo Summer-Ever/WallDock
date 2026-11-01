@@ -17,3 +17,6 @@ output.json
 # 签名文件与本机口令，不公开
 keystore/
 keystore.properties
+
+# 本地加密备份，不上传
+walldock-signing-backup.tar.gz.enc

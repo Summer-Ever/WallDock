@@ -8,8 +8,8 @@
 <img alt="Android" src="https://img.shields.io/badge/Android-9.0%2B-3DDC84?logo=android&logoColor=white">
 <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white">
 <img alt="Compose" src="https://img.shields.io/badge/Jetpack%20Compose-Material3-4285F4">
-<img alt="Version" src="https://img.shields.io/badge/version-1.2.1-orange">
-<img alt="Size" src="https://img.shields.io/badge/APK-18%20MB-lightgrey">
+<img alt="Version" src="https://img.shields.io/badge/version-1.2.2-orange">
+<img alt="Size" src="https://img.shields.io/badge/APK-18.5%20MB-lightgrey">
 </p>
 
 <p>
@@ -42,15 +42,15 @@
 
 | 文件 | 签名 | 大小 | 适合谁 |
 | --- | --- | --- | :--- |
-| `WallDock-v1.2.1.apk` | 正式签名 | 18.2 MB | **推荐**。全新安装，或之前装的是正式版 |
-| `WallDock-v1.2.1-debugkey.apk` | 调试签名 | 22.6 MB | 之前装的是最早那版调试包、升级时提示「签名不同」的用户 — **可直接覆盖，保留已调参数** |
+| `WallDock-v1.2.2.apk` | 正式签名 | 18.5 MB | **推荐**。全新安装，或之前装的是正式版 |
+| `WallDock-v1.2.2-debugkey.apk` | 调试签名 | 23.0 MB | 之前装的是最早那版调试包、升级时提示「签名不同」的用户 — **可直接覆盖，保留已调参数** |
 
 <details>
 <summary>校验值（SHA-256）</summary>
 
 ```
-9a1bf79158a1a117e00436cd8b64fd049c6d8f98b24ef1c3406a731b8d78e68a  WallDock-v1.2.1.apk
-946e36079e89b55245aff7a2464566d19945a5ae709560ec475533e4b5e44ebe  WallDock-v1.2.1-debugkey.apk
+e724d897c34d6cc334ad0a2aa99522ae44f37cdd9a0ed080a5a529231bb5f304  WallDock-v1.2.2.apk
+cf0f332796c14eaecffd0140eab74b24495b48c0a17a2d82fad04b4d898e77a6  WallDock-v1.2.2-debugkey.apk
 ```
 
 </details>
@@ -58,7 +58,7 @@
 安装：把 APK 传到手机点开安装（需允许「安装未知来源应用」），或用 adb：
 
 ```bash
-adb install -r WallDock-v1.2.1.apk
+adb install -r WallDock-v1.2.2.apk
 ```
 
 > 该 APK 使用自签名证书（`CN=WallDock`）签名，不走 Google Play 分发，属正常情况。
@@ -168,7 +168,7 @@ adb install -r WallDock-v1.2.1.apk
 <details>
 <summary><b>安装时提示「与已安装的应用签名不同」</b></summary>
 
-说明手机上装的是最早那版调试包。改用 `WallDock-v1.2.1-debugkey.apk` 覆盖升级即可保留参数；之后想换成正式签名版需要卸载重装一次（参数会丢）。
+说明手机上装的是最早那版调试包。改用 `WallDock-v1.2.2-debugkey.apk` 覆盖升级即可保留参数；之后想换成正式签名版需要卸载重装一次（参数会丢）。
 </details>
 
 ---
@@ -247,7 +247,8 @@ app/src/main/java/com/walldock/app/
 
 | 版本 | 内容 | 链接 |
 | :---: | --- | :---: |
-| **v1.2.1** | 修复选图"延迟一张"、裁剪松手抖动 | [Notes](RELEASE_NOTES_v1.2.1.md) · [Release](https://github.com/Summer-Ever/WallDock/releases/tag/v1.2.1) |
+| **v1.2.2** | 全新「深空玻璃」应用图标 + README 重写 | [Notes](RELEASE_NOTES_v1.2.2.md) · [Release](https://github.com/Summer-Ever/WallDock/releases/tag/v1.2.2) |
+| v1.2.1 | 修复选图"延迟一张"、裁剪松手抖动 | [Notes](RELEASE_NOTES_v1.2.1.md) · [Release](https://github.com/Summer-Ever/WallDock/releases/tag/v1.2.1) |
 | v1.2.0 | 桌面效果预览、裁剪实时跟手、滑杆连续刷新 | [Notes](RELEASE_NOTES_v1.2.0.md) |
 | v1.1.0 | 参数常态化：Dock 设置与壁纸自动记住 | [Notes](RELEASE_NOTES_v1.1.0.md) |
 | v1.0.0 | 首个可用版本 | [Notes](RELEASE_NOTES_v1.0.0.md) |

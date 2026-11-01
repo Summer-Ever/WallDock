@@ -1,0 +1,12 @@
+# 统一换行符，避免跨平台构建问题
+* text=auto eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件不做换行处理
+*.jar binary
+*.apk binary
+*.png binary
+*.jpg binary
+*.webp binary

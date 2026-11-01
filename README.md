@@ -52,15 +52,27 @@ Android 不允许普通 App 往别家启动器的桌面上画东西，所以这�
 ./gradlew :app:assembleRelease      # 未签名的 release 包
 ```
 
-已构建好的调试包：`app/build/outputs/apk/debug/app-debug.apk`
+> 首次构建需要联网从 Google Maven 拉取 Compose 依赖，约 2–3 分钟。
 
-安装：
+### 直接安装（不想编译）
+
+仓库里已附带构建好的安装包：[`release/WallDock-v1.0.0-debug.apk`](release/WallDock-v1.0.0-debug.apk)
+
+传到手机上点开安装即可（需允许「安装未知来源应用」），或用 adb：
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r release/WallDock-v1.0.0-debug.apk
 ```
 
-也可以把这个 APK 传到手机上直接点开安装（需允许「安装未知来源应用」）。
+## 界面
+
+| 编辑器 | 桌面模糊 85% |
+| :---: | :---: |
+| ![编辑器](screenshots/01-editor.png) | ![模糊](screenshots/02-blur.png) |
+
+| Dock 倾斜 -12° | 应用到桌面后 |
+| :---: | :---: |
+| ![Dock](screenshots/03-dock-tilt.png) | ![桌面](screenshots/04-home-screen.png) |
 
 ---
 

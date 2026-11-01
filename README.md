@@ -25,6 +25,7 @@
 
 **应用**
 - 一键应用到「桌面 + 锁屏」，也可只设桌面或只设锁屏
+- **参数常态化**：Dock 全部参数、模糊强度、上次壁纸与构图自动记住——换壁纸不用重调 Dock，重开 App 直接接着上次用（Dock 页可一键恢复默认）
 
 ---
 
@@ -58,14 +59,14 @@ release 签名读取根目录的 `keystore.properties`（不在仓库里，涉�
 
 ### 直接安装（不想编译）
 
-👉 **[下载 WallDock v1.0.0（签名版 APK，18 MB）](../../releases/latest)**
+👉 **[下载 WallDock v1.1.0（签名版 APK，18 MB）](../../releases/latest)**
 
-仓库里也留了一份副本：[`release/WallDock-v1.0.0.apk`](release/WallDock-v1.0.0.apk)（SHA-256 见同名 `.sha256` 文件）
+仓库里也留了一份副本：[`release/WallDock-v1.1.0.apk`](release/WallDock-v1.1.0.apk)（SHA-256 见同名 `.sha256` 文件）
 
 传到手机上点开安装即可（需允许「安装未知来源应用」），或用 adb：
 
 ```bash
-adb install -r release/WallDock-v1.0.0.apk
+adb install -r release/WallDock-v1.1.0.apk
 ```
 
 > 该 APK 使用自签名证书（`CN=WallDock`）签名，非 Google Play 分发，属正常情况。
@@ -79,6 +80,12 @@ adb install -r release/WallDock-v1.0.0.apk
 | Dock 倾斜 -12° | 应用到桌面后 |
 | :---: | :---: |
 | ![Dock](screenshots/03-dock-tilt.png) | ![桌面](screenshots/04-home-screen.png) |
+
+重开 App 自动恢复上次的壁纸与 Dock 设置：
+
+| 恢复上次会话 |
+| :---: |
+| ![恢复](screenshots/05-session-restore.png) |
 
 ---
 
@@ -105,7 +112,8 @@ app/src/main/java/com/walldock/app/
 ├── util/
 │   ├── Screen.kt               真实屏幕像素尺寸
 │   └── WallpaperSetter.kt      WallpaperManager 封装（FLAG_SYSTEM / FLAG_LOCK）
-├── vm/EditorViewModel.kt       状态 + 预览渲染（防抖） + 全尺寸应用
+├── data/SettingsStore.kt       参数持久化（SharedPreferences JSON + 壁纸缓存）
+├── vm/EditorViewModel.kt       状态 + 预览渲染（防抖） + 全尺寸应用 + 参数落盘
 └── ui/
     ├── EditorScreen.kt         编辑器主界面
     ├── components/Controls.kt  滑杆/开关/分段选择

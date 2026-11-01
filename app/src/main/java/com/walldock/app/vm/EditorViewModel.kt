@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.walldock.app.data.SettingsStore
 import com.walldock.app.img.BitmapUtils
 import com.walldock.app.img.Blur
 import com.walldock.app.img.DockRenderer
@@ -38,7 +39,19 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     val screenHeight: Int get() = screen.height
     val aspect: Float get() = screen.width.toFloat() / screen.height.toFloat()
 
-    var state by mutableStateOf(EditorState())
+    /** 配置持久化：Dock / 模糊参数长期记住，换壁纸不用重调 */
+    private val store = SettingsStore(app)
+    private val saved = store.load()
+
+    var state by mutableStateOf(
+        EditorState(
+            homeBlur = saved.homeBlur,
+            lockBlur = saved.lockBlur,
+            linkBlur = saved.linkBlur,
+            dock = saved.dock,
+            showGrid = saved.showGrid,
+        )
+    )
         private set
 
     var source by mutableStateOf<Bitmap?>(null)
@@ -46,6 +59,10 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 当前用的是内置示例图（还没选自己的照片） */
     var isDemo by mutableStateOf(true)
+        private set
+
+    /** 本次启动是否恢复出了上次的壁纸（用于界面提示） */
+    var restoredLastSession by mutableStateOf(false)
         private set
 
     var preview by mutableStateOf<ImageBitmap?>(null)
@@ -60,12 +77,42 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var message by mutableStateOf<String?>(null)
 
     private var renderJob: Job? = null
+    private var saveJob: Job? = null
 
     init {
-        val w = 1080
-        val h = (w * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
-        source = BitmapUtils.demoBitmap(w, h)
+        val cached = store.loadWallpaper()
+        if (cached != null) {
+            // 上次的壁纸直接接上，配合已恢复的 Dock 参数＝打开即可用
+            source = cached
+            isDemo = false
+            restoredLastSession = true
+            state = state.copy(transform = saved.transform)
+        } else {
+            val w = 1080
+            val h = (w * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
+            source = BitmapUtils.demoBitmap(w, h)
+        }
         requestRender(immediate = true)
+    }
+
+    // ---------------- 持久化 ----------------
+
+    /** 参数变化后延迟落盘，避免拖动滑杆时频繁写盘 */
+    private fun persist(debounceMs: Long = 350) {
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch {
+            if (debounceMs > 0) delay(debounceMs)
+            val snapshot = state
+            withContext(Dispatchers.IO) { store.save(snapshot) }
+        }
+    }
+
+    /** Dock 参数恢复出厂值 */
+    fun resetDock() {
+        state = state.copy(dock = DockSettings())
+        requestRender(immediate = true)
+        persist(0)
+        message = "Dock 参数已恢复默认"
     }
 
     // ---------------- 图片 ----------------
@@ -81,8 +128,12 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             }
             source = bmp
             isDemo = false
+            restoredLastSession = false
+            // 只重置裁剪，Dock / 模糊参数原样沿用——换壁纸不用重调
             state = state.copy(transform = CropTransform())
             requestRender(immediate = true)
+            persist(0)
+            withContext(Dispatchers.IO) { store.saveWallpaper(bmp) }
         }
     }
 
@@ -91,25 +142,30 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun setHomeBlur(v: Float) {
         state = state.copy(homeBlur = v)
         requestRender()
+        persist()
     }
 
     fun setLockBlur(v: Float) {
         state = state.copy(lockBlur = v)
         requestRender()
+        persist()
     }
 
     fun setLinkBlur(v: Boolean) {
         state = state.copy(linkBlur = v, lockBlur = if (v) state.homeBlur else state.lockBlur)
         requestRender()
+        persist()
     }
 
     fun setShowGrid(v: Boolean) {
         state = state.copy(showGrid = v)
+        persist()
     }
 
     fun setZoom(v: Float) {
         state = state.copy(transform = state.transform.copy(zoom = v.coerceIn(1f, 5f)))
         requestRender()
+        persist()
     }
 
     fun nudgePan(dx: Float, dy: Float) {
@@ -120,11 +176,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             )
         )
         requestRender()
+        persist()
     }
 
     fun resetCrop() {
         state = state.copy(transform = CropTransform())
         requestRender(immediate = true)
+        persist()
     }
 
     fun switchPreviewMode(mode: PreviewMode) {
@@ -136,6 +194,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     fun updateDock(block: (DockSettings) -> DockSettings) {
         state = state.copy(dock = block(state.dock))
         requestRender()
+        persist()
     }
 
     /** 预览框内的双指缩放 / 拖动 */
@@ -157,6 +216,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             )
         )
         requestRender()
+        persist()
     }
 
     // ---------------- 预览渲染 ----------------
@@ -214,6 +274,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val src = source ?: return
         if (busy) return
         busy = true
+        persist(0)
         viewModelScope.launch {
             val result = withContext(Dispatchers.Default) { runApply(src, target) }
             busy = false

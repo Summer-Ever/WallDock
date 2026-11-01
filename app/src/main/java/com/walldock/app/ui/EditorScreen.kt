@@ -297,6 +297,13 @@ private fun WallpaperTab(vm: EditorViewModel, onPick: () -> Unit) {
         HSpacer(0)
         PillButton("重置裁剪", onClick = { vm.resetCrop() }, modifier = Modifier.weight(0.8f))
     }
+    Spacer(Modifier.height(6.dp))
+    Text(
+        if (vm.restoredLastSession) "已恢复上次的壁纸与设置 · 换图不会重置 Dock"
+        else "Dock 与模糊设置会自动记住，换壁纸不用重调",
+        fontSize = 10.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     SectionLabel("模糊效果（桌面 / 锁屏可分别设置）")
     SliderRow("桌面壁纸模糊", s.homeBlur, 0f..1f, onChange = { vm.setHomeBlur(it) })
@@ -323,6 +330,18 @@ private fun WallpaperTab(vm: EditorViewModel, onPick: () -> Unit) {
 @Composable
 private fun DockTab(vm: EditorViewModel) {
     val d = vm.state.dock
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "参数自动保存，换壁纸沿用",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        PillButton("重置 Dock", onClick = { vm.resetDock() })
+    }
+    Spacer(Modifier.height(6.dp))
+
     SwitchRow("启用 Dock 栏", d.enabled, onChange = { on -> vm.updateDock { it.copy(enabled = on) } })
 
     SectionLabel("玻璃样式")

@@ -40,7 +40,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 代码缩减 + 资源收缩：显著减小包体积、加快安装与启动
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystorePropsFile.exists()) {
                 signingConfigs.getByName("release")

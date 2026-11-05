@@ -1,6 +1,7 @@
 package com.walldock.app.vm
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
@@ -27,16 +28,22 @@ import com.walldock.app.util.WallpaperSetter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import kotlin.math.max
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     private val screen: IntSize = Screen.size(app)
     private val density: Float = Screen.density(app)
+
+    /** 仅调试包打渲染日志：release 里每帧 Log.d（字符串分配 + logd）是纯开销 */
+    private val debugLog =
+        (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     val screenWidth: Int get() = screen.width
     val screenHeight: Int get() = screen.height
@@ -103,22 +110,38 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** 渲染串行锁：合并循环、手势结束补帧、换图渲染可能同时到来，串行才能保证不互相覆盖 */
     private val renderMutex = Mutex()
 
+    /**
+     * 预览渲染缓存：只重算真正变化的层，其余复用。
+     * - [cachedBase]：构图（transform）不变就跳过 cover 重采样
+     * - [cachedBlur]：构图 + 模糊强度不变就跳过壁纸模糊
+     * - [cachedFrost]：构图 + frost 不变就跳过玻璃后方模糊
+     * 键里带上源图实例，换图后旧缓存自然失效。缓存只读不改，Dock 始终画在副本上。
+     */
+    private var cachedBase: Bitmap? = null
+    private var cachedBaseKey: Pair<Bitmap, CropTransform>? = null
+    private var cachedBlur: Bitmap? = null
+    private var cachedBlurKey: Triple<Bitmap, CropTransform, Float>? = null
+    private var cachedFrost: Bitmap? = null
+    private var cachedFrostKey: Triple<Bitmap, CropTransform, Float>? = null
+
     init {
-        val cached = store.loadWallpaper()
-        if (cached != null) {
-            // 上次的壁纸直接接上，配合已恢复的 Dock 参数＝打开即可用
-            source = cached
-            isDemo = false
-            restoredLastSession = true
-            state = state.copy(transform = saved.transform)
-        } else {
-            val w = 1080
-            val h = (w * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
-            source = BitmapUtils.demoBitmap(w, h)
-        }
-        // 同样先备好降采样源与手势底图，首帧才既快又对
         viewModelScope.launch {
-            source?.let { preparePreviewSource(it) }
+            // 壁纸解码与示例图生成全部放后台：大图 JPEG 解码可达数百毫秒，不能卡主线程
+            val cached = withContext(Dispatchers.Default) { store.loadWallpaper() }
+            if (cached != null) {
+                // 上次的壁纸直接接上，配合已恢复的 Dock 参数＝打开即可用
+                source = cached
+                isDemo = false
+                restoredLastSession = true
+                state = state.copy(transform = saved.transform)
+            } else {
+                val w = 1080
+                val h = (w * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
+                source = withContext(Dispatchers.Default) { BitmapUtils.demoBitmap(w, h) }
+            }
+            val src = source ?: return@launch
+            // 同样先备好降采样源与手势底图，首帧才既快又对
+            preparePreviewSource(src)
             refreshBasePreview()
             requestRender(immediate = true)
         }
@@ -196,7 +219,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             refreshBasePreview()
             // 立刻把新手势底图顶上预览，让用户马上看到换图成功，随后再出完整效果
             preview = basePreview
-            Log.d("WallDock", "image loaded ${bmp.width}x${bmp.height} → 预览已切换为新图")
+            if (debugLog) Log.d("WallDock", "image loaded ${bmp.width}x${bmp.height} → 预览已切换为新图")
 
             busy = false
             requestRender(immediate = true)
@@ -304,7 +327,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             // 顺序关键：先把新构图完整渲染出来，再撤掉 live 层。
             // 若先撤层，预览会短暂切回「手势前的旧成品图」再跳到新位置——就是那一下抖动。
             renderPreview()
-            Log.d("WallDock", "gesture settle → 切回成品图（渲染已完成）")
+            if (debugLog) Log.d("WallDock", "gesture settle → 切回成品图（渲染已完成）")
             gestureActive = false
             persist()
         }
@@ -356,32 +379,55 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun renderPreview() = renderMutex.withLock {
         // 预览一律用降采样源图（720 宽）：滑动调参时渲染量约降 4 倍，观感几乎无差
         val src = previewSource ?: source ?: return@withLock
-        val t0 = System.currentTimeMillis()
+        val t0 = if (debugLog) System.currentTimeMillis() else 0L
         val st = state
         val pw = 480
         val ph = (pw * screen.height / screen.width.toFloat()).toInt().coerceAtLeast(2)
 
-        val base = withContext(Dispatchers.Default) {
-            BitmapUtils.renderCover(src, pw, ph, st.transform)
-        }
+        // 1) 底图：构图不变就复用，调 Dock / 模糊参数不再重复重采样
+        val base = cachedBase?.takeIf { cachedBaseKey == Pair(src, st.transform) }
+            ?: withContext(Dispatchers.Default) {
+                BitmapUtils.renderCover(src, pw, ph, st.transform)
+            }.also {
+                cachedBase = it
+                cachedBaseKey = Pair(src, st.transform)
+            }
+        coroutineContext.ensureActive()
 
         val strength = if (previewMode == PreviewMode.LOCK) {
             if (st.linkBlur) st.homeBlur else st.lockBlur
         } else st.homeBlur
 
-        var layer = withContext(Dispatchers.Default) {
-            val b = if (strength > 0.01f) {
-                Blur.blur(base, Blur.radiusFor(strength, pw), extraDownscale = PREVIEW_BLUR_DOWNSCALE)
-            } else null
-            if (b != null && b !== base) b else base
+        // 2) 壁纸模糊层：构图 + 强度不变就复用
+        var layer = base
+        if (strength > 0.01f) {
+            val key = Triple(src, st.transform, strength)
+            val blurred = cachedBlur?.takeIf { cachedBlurKey == key }
+                ?: withContext(Dispatchers.Default) {
+                    Blur.blur(base, Blur.radiusFor(strength, pw), extraDownscale = PREVIEW_BLUR_DOWNSCALE)
+                }.also {
+                    cachedBlur = it
+                    cachedBlurKey = key
+                }
+            if (blurred !== base) layer = blurred
         }
+        coroutineContext.ensureActive()
 
         val dock = st.dock
         if (previewMode == PreviewMode.HOME && dock.enabled) {
             layer = withContext(Dispatchers.Default) {
+                // 3) 玻璃后方模糊层同样缓存，拖透明度 / 圆角等参数时完全跳过模糊
                 val backdrop = if (dock.glassOnBlur) {
-                    Blur.blur(base, Blur.radiusFor(dock.frost, pw), extraDownscale = PREVIEW_BLUR_DOWNSCALE)
+                    val key = Triple(src, st.transform, dock.frost)
+                    val b = cachedFrost?.takeIf { cachedFrostKey == key }
+                        ?: Blur.blur(base, Blur.radiusFor(dock.frost, pw), extraDownscale = PREVIEW_BLUR_DOWNSCALE)
+                            .also {
+                                cachedFrost = it
+                                cachedFrostKey = key
+                            }
+                    if (b !== base) b else base
                 } else base
+                // 缓存层只读：Dock 必须画在副本上
                 val out = layer.copy(Bitmap.Config.ARGB_8888, true)
                 DockRenderer.draw(
                     Canvas(out),
@@ -396,7 +442,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         preview = layer.asImageBitmap()
-        Log.d("WallDock", "preview render ${System.currentTimeMillis() - t0}ms")
+        if (debugLog) Log.d("WallDock", "preview render ${System.currentTimeMillis() - t0}ms")
     }
 
     // ---------------- 应用到壁纸 ----------------
@@ -419,41 +465,54 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = getApplication<Application>()
         val base = BitmapUtils.renderCover(src, w, h, state.transform)
         var done = ""
+        val homeStrength = state.homeBlur
+        val lockStrength = if (state.linkBlur) state.homeBlur else state.lockBlur
+        // 桌面 + 锁屏模糊强度一致时共享一次全尺寸模糊——它是「应用」耗时的大头
+        val sharedBlur: Bitmap? =
+            if (target == ApplyTarget.BOTH && homeStrength == lockStrength) {
+                blurLayer(base, homeStrength, w)
+            } else null
         return try {
+            val dock = state.dock
             if (target == ApplyTarget.HOME || target == ApplyTarget.BOTH) {
-                val img = buildImage(base, w, h, state.homeBlur, withDock = true)
-                WallpaperSetter.setHome(ctx, img)
-                img.recycle()
+                // 共享层还要留给锁屏用，画 Dock 前先拷贝；单独设桌面时直接画在模糊层上，省一次全尺寸拷贝
+                val layer = if (sharedBlur != null) {
+                    sharedBlur.copy(Bitmap.Config.ARGB_8888, true)
+                } else {
+                    blurLayer(base, homeStrength, w) ?: base.copy(Bitmap.Config.ARGB_8888, true)
+                }
+                if (dock.enabled) {
+                    val backdrop = if (dock.glassOnBlur) blurLayer(base, dock.frost, w) ?: base else base
+                    DockRenderer.draw(Canvas(layer), w, h, density, backdrop, dock)
+                    if (backdrop !== base) backdrop.recycle()
+                }
+                WallpaperSetter.setHome(ctx, layer)
+                layer.recycle()
                 done = "桌面"
             }
             if (target == ApplyTarget.LOCK || target == ApplyTarget.BOTH) {
-                val strength = if (state.linkBlur) state.homeBlur else state.lockBlur
-                val img = buildImage(base, w, h, strength, withDock = false)
-                WallpaperSetter.setLock(ctx, img)
-                img.recycle()
+                // 锁屏是共享层的最后一次使用，直接交付，回收统一走 finally
+                val layer = sharedBlur
+                    ?: blurLayer(base, lockStrength, w)
+                    ?: base.copy(Bitmap.Config.ARGB_8888, true)
+                WallpaperSetter.setLock(ctx, layer)
+                if (layer !== sharedBlur) layer.recycle()
                 done = if (done.isEmpty()) "锁屏" else "桌面 + 锁屏"
             }
             "已设置为$done 壁纸"
         } catch (t: Throwable) {
             "设置失败：${t.message ?: t.javaClass.simpleName}"
         } finally {
+            sharedBlur?.let { if (!it.isRecycled) it.recycle() }
             if (!base.isRecycled) base.recycle()
         }
     }
 
-    private fun buildImage(base: Bitmap, w: Int, h: Int, blurStrength: Float, withDock: Boolean): Bitmap {
-        val blurred = if (blurStrength > 0.01f) Blur.blur(base, Blur.radiusFor(blurStrength, w)) else null
-        val layer = if (blurred != null && blurred !== base) blurred else base.copy(Bitmap.Config.ARGB_8888, true)
-
-        val dock = state.dock
-        if (!withDock || !dock.enabled) return layer
-
-        val out = layer.copy(Bitmap.Config.ARGB_8888, true)
-        val backdrop = if (dock.glassOnBlur) Blur.blur(base, Blur.radiusFor(dock.frost, w)) else base
-        DockRenderer.draw(Canvas(out), w, h, density, backdrop, dock)
-        if (backdrop !== base && backdrop !== layer) backdrop.recycle()
-        if (layer !== base) layer.recycle()
-        return out
+    /** 真正做了模糊就返回新位图；强度过小 / 半径不足时返回 null，由调用方退回原图或其副本 */
+    private fun blurLayer(base: Bitmap, strength: Float, w: Int): Bitmap? {
+        if (strength <= 0.01f) return null
+        val b = Blur.blur(base, Blur.radiusFor(strength, w))
+        return if (b !== base) b else null
     }
 
     private companion object {

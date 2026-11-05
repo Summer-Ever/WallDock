@@ -236,8 +236,10 @@ app/src/main/java/com/walldock/app/
 关键实现点：
 
 - 预览在 720px 宽的降采样图上渲染，`requestRender()` 是合并式渲染循环 —— 连续拖滑杆不会堆积渲染任务；
+- 预览渲染分层缓存：构图不变复用底图、模糊强度不变复用模糊层 —— 拖 Dock 参数时零模糊计算，只重画玻璃；
+- 启动时壁纸解码、示例图生成全部走后台线程，主线程不碰大图，打开 App 即刻出界面；
 - 手势期间用 `graphicsLayer` 做 GPU 变换、零重绘，松手后**先渲染完成再撤层**，避免跳变；
-- 点击应用时才按真实屏幕尺寸重新渲染，`WallpaperManager.setBitmap(..., FLAG_SYSTEM/FLAG_LOCK)` 直接写入；
+- 点击应用时才按真实屏幕尺寸重新渲染，桌面 + 锁屏模糊强度一致时共享同一次模糊，`WallpaperManager.setBitmap(..., FLAG_SYSTEM/FLAG_LOCK)` 直接写入；
 - 参数改动 350 ms 防抖落盘，壁纸存 `filesDir/last_wallpaper.jpg`（最长边 2400，JPEG q92）；
 - `android:largeHeap="true"` 保证大尺寸多图层合成不 OOM。
 

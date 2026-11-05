@@ -59,6 +59,10 @@ object Blur {
 
     private fun blurHorizontal(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int) {
         val div = 2 * r + 1
+        val wm1 = w - 1
+        // 左右窗口索引预计算（含边缘钳位），热循环里不再逐像素做 coerceIn 分支
+        val outIdx = IntArray(w) { i -> (i - r).coerceIn(0, wm1) }
+        val inIdx = IntArray(w) { i -> (i + r + 1).coerceIn(0, wm1) }
         for (y in 0 until h) {
             val base = y * w
             var a = 0
@@ -66,7 +70,7 @@ object Blur {
             var gg = 0
             var bb = 0
             for (k in -r..r) {
-                val px = src[base + k.coerceIn(0, w - 1)]
+                val px = src[base + k.coerceIn(0, wm1)]
                 a += (px ushr 24) and 0xFF
                 rr += (px shr 16) and 0xFF
                 gg += (px shr 8) and 0xFF
@@ -74,8 +78,8 @@ object Blur {
             }
             for (x in 0 until w) {
                 dst[base + x] = ((a / div) shl 24) or ((rr / div) shl 16) or ((gg / div) shl 8) or (bb / div)
-                val outPx = src[base + (x - r).coerceIn(0, w - 1)]
-                val inPx = src[base + (x + r + 1).coerceIn(0, w - 1)]
+                val outPx = src[base + outIdx[x]]
+                val inPx = src[base + inIdx[x]]
                 a += ((inPx ushr 24) and 0xFF) - ((outPx ushr 24) and 0xFF)
                 rr += ((inPx shr 16) and 0xFF) - ((outPx shr 16) and 0xFF)
                 gg += ((inPx shr 8) and 0xFF) - ((outPx shr 8) and 0xFF)
@@ -86,13 +90,16 @@ object Blur {
 
     private fun blurVertical(src: IntArray, dst: IntArray, w: Int, h: Int, r: Int) {
         val div = 2 * r + 1
+        val hm1 = h - 1
+        val outIdx = IntArray(h) { i -> (i - r).coerceIn(0, hm1) }
+        val inIdx = IntArray(h) { i -> (i + r + 1).coerceIn(0, hm1) }
         for (x in 0 until w) {
             var a = 0
             var rr = 0
             var gg = 0
             var bb = 0
             for (k in -r..r) {
-                val px = src[k.coerceIn(0, h - 1) * w + x]
+                val px = src[k.coerceIn(0, hm1) * w + x]
                 a += (px ushr 24) and 0xFF
                 rr += (px shr 16) and 0xFF
                 gg += (px shr 8) and 0xFF
@@ -100,8 +107,8 @@ object Blur {
             }
             for (y in 0 until h) {
                 dst[y * w + x] = ((a / div) shl 24) or ((rr / div) shl 16) or ((gg / div) shl 8) or (bb / div)
-                val outPx = src[(y - r).coerceIn(0, h - 1) * w + x]
-                val inPx = src[(y + r + 1).coerceIn(0, h - 1) * w + x]
+                val outPx = src[outIdx[y] * w + x]
+                val inPx = src[inIdx[y] * w + x]
                 a += ((inPx ushr 24) and 0xFF) - ((outPx ushr 24) and 0xFF)
                 rr += ((inPx shr 16) and 0xFF) - ((outPx shr 16) and 0xFF)
                 gg += ((inPx shr 8) and 0xFF) - ((outPx shr 8) and 0xFF)

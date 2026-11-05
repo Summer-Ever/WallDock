@@ -72,7 +72,8 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun EditorScreen(vm: EditorViewModel) {
-    val state = vm.state
+    // 不在顶层读 vm.state：手势 / 滑杆每帧都会改 state，
+    // 顶层读取会让 Header、控制面板整棵树跟着重启；状态由各子界面按需读取
     var tab by remember { mutableIntStateOf(0) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -202,7 +203,7 @@ private fun PreviewArea(vm: EditorViewModel, preview: ImageBitmap?, modifier: Mo
                                 },
                             contentScale = ContentScale.Crop,
                         )
-                    } else if (preview != null) {
+                    } else {
                         Image(
                             bitmap = preview,
                             contentDescription = "壁纸预览",
@@ -286,9 +287,9 @@ private fun PreviewArea(vm: EditorViewModel, preview: ImageBitmap?, modifier: Mo
 @Composable
 private fun EmptyPreview() {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("还没有图片", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("正在准备预览…", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        Text("点下方「选择图片」开始", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+        Text("也可点下方「选择图片」直接开始", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
     }
 }
 
